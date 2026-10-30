@@ -99,6 +99,17 @@ def test_monitor_specs_looked_up_on_product_page_and_cached(now):
     assert fetcher.requested == [MONITORS]  # specs came from the cache
 
 
+def test_product_pages_on_other_hosts_are_never_fetched(now):
+    listing = """<script type="application/ld+json">{"@type": "ItemList", "itemListElement": [
+      {"@type": "ListItem", "item": {"@type": "Product", "name": "Example Laptop",
+       "url": "http://169.254.169.254/latest/meta-data/",
+       "offers": {"@type": "Offer", "price": 500, "priceCurrency": "EUR"}}}]}</script>"""
+    fetcher = FakeFetcher({LAPTOPS: listing})
+    report = run_once(make_config((Category.LAPTOP, LAPTOPS)), State(), fetcher, now, None)
+    assert report.verdicts["unknown"] == 1      # RAM unknown, but no detail fetch
+    assert fetcher.requested == [LAPTOPS]
+
+
 def test_phone_alert_needs_own_history(now):
     phones = "https://shop.example/puhelimet"
     config = make_config((Category.PHONE, phones))

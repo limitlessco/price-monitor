@@ -138,6 +138,61 @@ def test_missing_robots_allows_but_unreachable_robots_blocks():
         fetcher.get(PAGE)
 
 
+def redirect(location, status=301):
+    return FakeResponse(status, headers={"Location": location})
+
+
+def test_redirects_are_followed_and_rechecked_against_robots():
+    moved = "https://shop.example/c/laptops-new"
+    fetcher, session, _ = make_fetcher({ROBOTS: ok_robots(), PAGE: [redirect("/c/laptops-new")],
+                                        moved: [FakeResponse(200, "moved ok")]})
+    assert fetcher.get(PAGE) == "moved ok"
+    assert all(timeout for _, timeout in session.calls)
+
+    disallowed = "https://shop.example/haku/?q=x"
+    fetcher, session, _ = make_fetcher({ROBOTS: [FakeResponse(200, fixture_text("robots_wildcards.txt"))],
+                                        PAGE: [redirect(disallowed)]})
+    with pytest.raises(AccessDenied, match="robots"):
+        fetcher.get(PAGE)
+    assert disallowed not in [u for u, _ in session.calls]
+
+
+@pytest.mark.parametrize("target", [
+    "http://169.254.169.254/latest/meta-data/",
+    "http://127.0.0.1:8080/admin",
+    "http://[::1]/",
+    "http://localhost/",
+    "http://service.cluster.local/",
+    "file:///etc/passwd",
+])
+def test_redirects_to_internal_addresses_are_refused(target):
+    fetcher, session, _ = make_fetcher({ROBOTS: ok_robots(), PAGE: [redirect(target, 302)]})
+    with pytest.raises(AccessDenied):
+        fetcher.get(PAGE)
+    assert [u for u, _ in session.calls] == [ROBOTS, PAGE]
+
+
+def test_internal_url_is_refused_before_any_request():
+    fetcher, session, _ = make_fetcher({})
+    with pytest.raises(AccessDenied):
+        fetcher.get("http://10.0.0.5/product")
+    assert session.calls == []
+
+
+def test_robots_txt_redirect_is_followed():
+    fetcher, _, _ = make_fetcher({
+        "http://shop.example/robots.txt": [redirect("https://shop.example/robots.txt")],
+        ROBOTS: [FakeResponse(200, fixture_text("robots_wildcards.txt"))],
+    })
+    assert not fetcher.allowed("http://shop.example/haku/x")
+
+
+def test_redirect_loop_gives_up():
+    fetcher, _, _ = make_fetcher({ROBOTS: ok_robots(), PAGE: [redirect(PAGE)]})
+    with pytest.raises(FetchError, match="redirects"):
+        fetcher.get(PAGE)
+
+
 def test_time_budget_stops_fetching():
     clock = FakeClock()
     fetcher, _, _ = make_fetcher({ROBOTS: ok_robots(), PAGE: [FakeResponse(200, "ok")]},

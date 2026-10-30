@@ -6,10 +6,11 @@ or a CAPTCHA/login page ends the attempt for that URL.
 
 from __future__ import annotations
 
+import ipaddress
 import logging
 import time
 from typing import Callable, Optional
-from urllib.parse import urlsplit
+from urllib.parse import urljoin, urlsplit
 
 import requests
 from protego import Protego
@@ -17,6 +18,8 @@ from protego import Protego
 log = logging.getLogger(__name__)
 
 RETRY_STATUSES = {429, 500, 502, 503, 504}
+REDIRECT_STATUSES = {301, 302, 303, 307, 308}
+MAX_REDIRECTS = 5
 
 
 class FetchError(Exception):
@@ -91,8 +94,8 @@ class Fetcher:
         robots_url = f"{scheme}://{host}/robots.txt"
         parsed: Optional[Protego]
         try:
-            resp = self._request(robots_url, host)
-            parsed = Protego.parse(resp.text)
+            # RFC 9309: follow up to five redirects for robots.txt itself.
+            parsed = Protego.parse(self._follow(robots_url, check_robots=False).text)
         except AccessDenied as exc:
             log.warning("robots.txt for %s refused (%s); treating site as disallowed", host, exc)
             parsed = None
@@ -113,9 +116,23 @@ class Fetcher:
 
     def get(self, url: str) -> str:
         """GET a page allowed by robots.txt and return its text."""
-        if not self.allowed(url):
-            raise AccessDenied(f"robots.txt disallows {url}")
-        return self._request(url, urlsplit(url).netloc).text
+        return self._follow(url, check_robots=True).text
+
+    def _follow(self, url: str, check_robots: bool) -> requests.Response:
+        """Request ``url``, following redirects by hand so every hop is checked
+        (public http(s) address and, for pages, robots.txt of the hop's host)."""
+        for _ in range(MAX_REDIRECTS + 1):
+            _require_public_http_url(url)
+            if check_robots and not self.allowed(url):
+                raise AccessDenied(f"robots.txt disallows {url}")
+            resp = self._request(url, urlsplit(url).netloc)
+            if resp.status_code not in REDIRECT_STATUSES:
+                return resp
+            location = resp.headers.get("Location")
+            if not location:
+                raise FetchError(f"HTTP {resp.status_code} without Location for {url}")
+            url = urljoin(url, location)
+        raise FetchError(f"more than {MAX_REDIRECTS} redirects")
 
     def _request(self, url: str, host: str) -> requests.Response:
         attempt = 0
@@ -124,7 +141,7 @@ class Fetcher:
                 raise BudgetExceeded("run time budget exhausted")
             self._throttle(host)
             try:
-                resp = self.session.get(url, timeout=self.timeout, allow_redirects=True)
+                resp = self.session.get(url, timeout=self.timeout, allow_redirects=False)
             except (requests.ConnectionError, requests.Timeout) as exc:
                 error: str = f"{type(exc).__name__}: {exc}"
                 retry_after = None
@@ -154,6 +171,25 @@ class Fetcher:
 
 class _NotFound(FetchError):
     pass
+
+
+def _require_public_http_url(url: str) -> None:
+    """URLs come from fetched pages, so refuse anything that is not a public web address.
+
+    Host names are not resolved here; an IP literal or "localhost" is rejected outright.
+    """
+    parts = urlsplit(url)
+    host = (parts.hostname or "").lower()
+    if parts.scheme not in ("http", "https") or not host:
+        raise AccessDenied(f"refusing non-http(s) URL {url!r}")
+    if host == "localhost" or host.endswith((".localhost", ".local", ".internal")):
+        raise AccessDenied(f"refusing internal host {host!r}")
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return
+    if not address.is_global:
+        raise AccessDenied(f"refusing non-public address {host!r}")
 
 
 def _retry_after_seconds(resp: requests.Response) -> Optional[float]:

@@ -7,6 +7,7 @@ import os
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Callable, Optional, Protocol
+from urllib.parse import urlsplit
 
 from .alerts import alert_key, should_realert
 from .config import Config, SourceConfig
@@ -98,6 +99,7 @@ def run_once(
             report.source_errors[source.name] = errors[-1]
             _annotate("warning", f"{source.name}: {errors[-1]}")
         state.record_source_result(source.name, ok=not errors, error=errors[-1] if errors else "")
+        source_hosts = {urlsplit(page.url).netloc for page in source.pages}
 
         for offer in offers:
             report.offers_seen += 1
@@ -109,7 +111,9 @@ def run_once(
             result = evaluate(offer, config.rules, history)
 
             # Missing specs: look at the product page once, then cache the result.
+            # Only on the source's own host - product URLs come from the fetched page.
             if (result.verdict is Verdict.UNKNOWN and result.missing_specs and source.fetch_details
+                    and urlsplit(offer.url).netloc in source_hosts
                     and cached is None and detail_budget > 0 and not report.budget_exhausted):
                 detail_budget -= 1
                 try:
