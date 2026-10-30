@@ -14,6 +14,14 @@ spec_cache_days = 30               # do not re-open a product page for specs wit
 history_retention_days = 365
 source_failure_alert_threshold = 6 # email once after this many failed runs in a row
 
+[notifications]
+# "github_issues" (default): each new deal becomes an issue in this repository and GitHub
+#   notifies you by email / app. Uses the automatic GITHUB_TOKEN; no passwords to store.
+# "email": send over SMTP; needs the SMTP_* secrets described in the README.
+channel = "github_issues"
+mention = "limitlessco"   # your GitHub username, @mentioned in each issue
+github_repository = ""   # "owner/name"; empty = the repository the workflow runs in
+
 [rules]
 # true: an item price under the limit alerts even when shipping is unknown (the email says so).
 # false: unknown shipping makes the verdict UNKNOWN (no alert).

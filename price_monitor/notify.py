@@ -1,4 +1,4 @@
-"""Email alerts over SMTP. All credentials come from environment variables."""
+"""Email alerts over SMTP (optional channel). All credentials come from environment variables."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import smtplib
 import ssl
 from dataclasses import dataclass
 from email.message import EmailMessage
-from typing import Mapping
+from typing import Iterable, Mapping
 
 from .models import Alert, SourceProblem
 
@@ -18,7 +18,13 @@ REQUIRED_ENV = ("SMTP_HOST", "SMTP_USERNAME", "SMTP_PASSWORD", "ALERT_EMAIL_TO")
 
 
 class NotifyError(Exception):
-    pass
+    """Delivery failed. Channels that send one message per alert report what did get
+    through, so those alerts are not sent twice on the next run."""
+
+    def __init__(self, message: str, delivered_keys: Iterable[str] = (), delivered_sources: Iterable[str] = ()):
+        super().__init__(message)
+        self.delivered_keys = set(delivered_keys)
+        self.delivered_sources = set(delivered_sources)
 
 
 @dataclass

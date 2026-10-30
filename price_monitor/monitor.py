@@ -35,7 +35,7 @@ class RunReport:
     alerts: list[Alert] = field(default_factory=list)
     source_errors: dict[str, str] = field(default_factory=dict)
     budget_exhausted: bool = False
-    email_failed: bool = False
+    notify_failed: bool = False
 
 
 def _annotate(level: str, message: str) -> None:
@@ -151,15 +151,19 @@ def run_once(
             try:
                 notifier(report.alerts, problems)
             except NotifyError as exc:
-                # Alerts stay unmarked, so the next run tries again.
-                report.email_failed = True
+                # Undelivered alerts stay unmarked, so the next run tries again.
+                report.notify_failed = True
                 log.error("%s", exc)
                 _annotate("error", str(exc))
+                delivered_keys, delivered_sources = exc.delivered_keys, exc.delivered_sources
             else:
-                for alert in report.alerts:
+                delivered_keys = {alert.key for alert in report.alerts}
+                delivered_sources = {problem.source for problem in problems}
+            for alert in report.alerts:
+                if alert.key in delivered_keys:
                     state.mark_alerted(alert.key, alert.offer.price_eur, now)
-                for problem in problems:
-                    state.mark_source_notified(problem.source)
+            for source_name in delivered_sources:
+                state.mark_source_notified(source_name)
 
     state.prune(now, settings.history_retention_days)
     log.info("Run finished: %d offers, verdicts %s, %d new alert(s)",

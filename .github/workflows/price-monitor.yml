@@ -8,12 +8,13 @@ on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: "Dry run: log matches, send no email, save no state"
+        description: "Dry run: log matches, open no issues, save no state"
         type: boolean
         default: false
 
 permissions:
-  contents: write  # needed only to push the state branch
+  contents: write  # push the state branch
+  issues: write    # open an issue per new deal (GitHub then notifies you)
 
 concurrency:
   group: price-monitor  # never two runs editing the state at once
@@ -50,6 +51,9 @@ jobs:
 
       - name: Run monitor
         env:
+          # Automatic, short-lived token for this run; used to open alert issues.
+          GITHUB_TOKEN: ${{ github.token }}
+          # Only used with [notifications] channel = "email"; unset secrets are empty.
           SMTP_HOST: ${{ secrets.SMTP_HOST }}
           SMTP_PORT: ${{ secrets.SMTP_PORT }}
           SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}

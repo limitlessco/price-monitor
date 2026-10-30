@@ -2,7 +2,8 @@
 
 A Python price monitor that runs hourly on GitHub Actions. It reads **category pages**
 of Finnish price-comparison sites and shops, checks every product against your rules,
-and emails you about new matches. It never buys anything.
+and opens a **GitHub issue** for each new match. GitHub then notifies you by email (and in
+the GitHub app), so no email account or password is stored anywhere. It never buys anything.
 
 | Rule    | Alerts when                                                                                      |
 |---------|--------------------------------------------------------------------------------------------------|
@@ -10,14 +11,14 @@ and emails you about new matches. It never buys anything.
 | Phone   | price < 300 € **and** the monitor's *own* price history for that exact product page is > 700 € |
 | Monitor | ≥ 34", IPS, ≥ 100 Hz, USB-C Power Delivery ≥ 65 W **and** price < 300 €                         |
 
-Each check gives **MATCH**, **NO_MATCH** or **UNKNOWN**. Only MATCH sends an email.
+Each check gives **MATCH**, **NO_MATCH** or **UNKNOWN**. Only MATCH sends an alert.
 Any spec that is missing stays unknown and is never guessed.
 
 ## How it works
 
 ```
 category page ──► JSON-LD (schema.org) or your CSS selectors ──► offers
-offers ──► spec parsing (title, then product page if needed) ──► rules ──► dedupe ──► email
+offers ──► spec parsing (title, then product page if needed) ──► rules ──► dedupe ──► GitHub issue
                                      │
                state.json (price history, spec cache, sent alerts) ◄── "monitor-state" branch
 ```
@@ -25,8 +26,8 @@ offers ──► spec parsing (title, then product page if needed) ──► rul
 * **Discovery is category-wide.** You list category URLs per source. Every product on those
   pages is evaluated, not only products you name.
 * **Extraction** tries schema.org JSON-LD first. JSON-LD is a public standard, so no
-  site-specific guessing is needed. If a site has no JSON-LD, it can use CSS selectors that
-  *you* copy from the live page. The project ships with no selectors.
+  site-specific guessing is needed. Sites without JSON-LD use CSS selectors from
+  `config.toml`, each checked against the live site (see Sources below).
 * **Specs** come from the product title. When a spec is still unknown and the price already
   qualifies, the monitor opens the product page once (at most `max_detail_fetches_per_run`
   per run) and caches the result for `spec_cache_days`.
@@ -36,7 +37,7 @@ offers ──► spec parsing (title, then product page if needed) ──► rul
   and `AggregateOffer.highPrice` are never used. **The phone rule therefore stays UNKNOWN
   until the monitor has watched a phone for a while.**
 * **Total price:** if a source states shipping, it is included. If shipping is unknown, the
-  default `allow_unknown_shipping = true` alerts on the item price and the email says
+  default `allow_unknown_shipping = true` alerts on the item price and the alert says
   "Shipping: unknown". Set it to `false` to treat unknown shipping as UNKNOWN instead.
 
 ## Sources (checked 2026-10-30)
@@ -50,8 +51,8 @@ dry run on 2026-10-30 read 336 products from the nine pages in about 80 seconds.
 | hintaopas.fi | CSS selectors on the site's own `data-test` attributes; spec table rows on product pages | Products are identified by `?p=<id>`. Pages use `?offset=44, 88, …`. robots.txt disallows `/search?` and `/c/…` URLs with `sort=`, `stores=` and several filter params. |
 | kauppa.dna.fi | CSS selectors on the site's own `data-testid` attributes | Uses only the one-off price, never the monthly instalment or "30 pv alin hinta". The page's own next-page link points at an internal hostname, so a URL template is used instead. Laptop titles rarely state RAM, so RAM is looked up on product pages, a few per run. |
 
-Sites change their markup. If a source stops yielding products, the monitor emails you once,
-and the selectors in `config.toml` need updating.
+Sites change their markup. If a source stops yielding products, the monitor opens one
+`source-problem` issue, and the selectors in `config.toml` need updating.
 
 The site owners' terms of use are your responsibility. Price-comparison sites often restrict
 automated collection.
@@ -80,20 +81,8 @@ automated collection.
    - It checks all nine category pages, which takes 1–2 minutes because it waits politely
      between requests.
    - Matches show up as lines starting with `DRY RUN alert`, with the price and a link.
-   - This is test mode: no email is sent and nothing is saved.
-3. **Optional: get matches by email from your computer.** Open *Command Prompt* in the
-   project folder (in File Explorer, type `cmd` in the address bar and press Enter), then run:
-
-   ```bat
-   set SMTP_HOST=smtp.gmail.com
-   set SMTP_USERNAME=you@gmail.com
-   set SMTP_PASSWORD=your-16-character-app-password
-   set ALERT_EMAIL_TO=you@gmail.com
-   run-local.bat --send-email
-   ```
-
-   These settings only last until you close that window. They're never written to a file.
-   History is kept in `state\local-state.json`, so you won't get the same deal twice.
+   - Nothing is sent and nothing is saved. The alerts themselves come from the hourly
+     GitHub Actions run, so a local check never duplicates them.
 
 To change the rules (prices, RAM, screen size and so on), edit `config.toml` in Notepad
 and run again.
@@ -146,37 +135,33 @@ selectors can't read them.
 
 ## Run it on GitHub Actions (hourly, from the cloud)
 
-### 1. Email (free options)
+### 1. How alerts reach you
 
-Any SMTP account works. Two free examples:
+Each new deal becomes an issue in this repository, labelled `price-alert`, with the price,
+why it matched and the shop link. The issue @mentions `mention` from `[notifications]` in
+`config.toml`, so GitHub notifies you:
 
-* **Gmail:** turn on 2-step verification, create an *App password*, and use host
-  `smtp.gmail.com`, port `587`.
-* **Outlook.com and other providers:** see your provider's SMTP settings. Some providers
-  disable basic-auth SMTP.
+* **Email:** GitHub sends it to your account's email address. Check
+  GitHub → Settings → Notifications: *Participating, @mentions and custom* should have
+  **Email** ticked (it is by default).
+* **Phone:** the GitHub mobile app shows it as a push notification, if you use the app.
 
-Port 465 uses implicit TLS. Any other port uses STARTTLS.
+Close an issue when you are done with it. All open deals are at
+**Issues → label: price-alert**.
 
-### 2. GitHub Secrets
+The workflow uses the automatic `GITHUB_TOKEN` that GitHub creates for each run and
+revokes afterwards. Its `issues: write` permission is granted in the workflow file. There
+are no secrets to add.
 
-Go to **Repository → Settings → Secrets and variables → Actions → New repository secret**:
+Prefer plain email? Set `channel = "email"` in `[notifications]` and add the secrets
+`SMTP_HOST`, `SMTP_PORT` (default 587), `SMTP_USERNAME`, `SMTP_PASSWORD`, `ALERT_EMAIL_TO`
+and optionally `ALERT_EMAIL_FROM` under **Settings → Secrets and variables → Actions**.
+A separate Gmail account with an app password works.
 
-| Secret | Example | Required |
-|--------|---------|----------|
-| `SMTP_HOST` | `smtp.gmail.com` | yes |
-| `SMTP_PORT` | `587` | no (default 587) |
-| `SMTP_USERNAME` | `you@gmail.com` | yes |
-| `SMTP_PASSWORD` | app password | yes |
-| `ALERT_EMAIL_TO` | `you@example.com` (comma-separated for several) | yes |
-| `ALERT_EMAIL_FROM` | defaults to `SMTP_USERNAME` | no |
+### 2. Run it
 
-To run locally with email, set the same names as environment variables. Never put them in
-`config.toml`.
-
-### 3. Run it
-
-Push to GitHub, then go to **Actions → Price monitor → Run workflow**. Tick *dry run* for
-the first try. After that it runs hourly.
+Go to **Actions → Price monitor → Run workflow**. Tick *dry run* for the first try. After
+that it runs hourly.
 
 ## GitHub Free usage
 
@@ -197,21 +182,24 @@ repository activity. Re-enable the workflow from the Actions tab if that happens
 
 * `state.json` lives on the `monitor-state` branch. That branch is a single commit
   force-pushed by each run, so the repository doesn't grow.
-* An alert's identity is `rule | source | product URL`. After an email is **successfully**
-  sent, the alert is recorded. If SMTP fails, nothing is marked and the next run retries.
-* An already-alerted product is emailed again only if its price has dropped by at least
-  **5 % and 10 €** since the last email. The same or a higher price never re-alerts. The
+* An alert's identity is `rule | source | product URL`. An alert is recorded only after its
+  issue is **successfully** created. If creating one fails, the others that did get through
+  are still recorded, and the next run retries only the missing ones.
+* An already-alerted product gets a new issue only if its price has dropped by at least
+  **5 % and 10 €** since the last alert. The same or a higher price never re-alerts. The
   thresholds are the `REALERT_*` constants in `price_monitor/alerts.py`.
 * If a source fails `source_failure_alert_threshold` runs in a row (HTTP errors, or a page
-  with zero extracted products after a layout change), you get one email about it. Another
-  one only comes after the source has recovered and then broken again.
+  with zero extracted products after a layout change), you get one `source-problem` issue.
+  Another one only comes after the source has recovered and then broken again.
 * To reset everything, delete the `monitor-state` branch.
 
 ## Troubleshooting
 
 | Symptom | Likely cause / fix |
 |---------|--------------------|
-| `Setup failed: missing environment variables: …` | A secret is not set or is misspelled (see the table above). |
+| `GitHub issue alerts need: GITHUB_TOKEN …` | Running outside Actions without `--dry-run`. Use `run-local.bat` (always a dry run) or the Actions workflow. |
+| `… check the token and the workflow's 'issues: write' permission` | The `permissions:` block in `.github/workflows/price-monitor.yml` must include `issues: write`. |
+| `Setup failed: missing environment variables: SMTP_…` | Only with `channel = "email"`: a secret is not set or is misspelled. |
 | `config file not found: config.toml` | Copy `config.example.toml` to `config.toml` and commit it. |
 | `no offers extracted` warning | The page has no schema.org Product data, or your selectors no longer match. Compare View Source with your selectors. |
 | `robots.txt disallows …` | That URL is off-limits. Pick another category URL. Don't work around it. |
@@ -221,14 +209,14 @@ repository activity. Re-enable the workflow from the Actions tab if that happens
 | Laptops are always UNKNOWN | RAM isn't in the title or on the product page as `32 GB RAM` / `RAM: 32 GB`. Run with `-v` to see each verdict's reasons. |
 | Phones never alert | Expected at first. The reference price needs this monitor's own history (see `[rules.phone]`). |
 | `… is corrupted` | `state.json` is broken. Delete the `monitor-state` branch to start fresh (alerts may repeat once). |
-| Email not arriving | Check the Actions log for `Sent alert email` / SMTP errors, and check your spam folder. Gmail needs an app password, not your normal password. |
+| Issue opened but no email | GitHub → Settings → Notifications: tick Email for *Participating, @mentions and custom*, check that `mention` in `config.toml` is your username, and check your spam folder. |
 | Scheduled runs late or missing | GitHub delays or drops scheduled runs under load. Use *Run workflow* to test. |
 
 ## Project layout
 
 ```
 price_monitor/
-  __main__.py   CLI entry point (exit 0 ok, 1 setup error, 2 email failed)
+  __main__.py   CLI entry point (exit 0 ok, 1 setup error, 2 alert delivery failed)
   config.py     config.toml loading and validation
   fetcher.py    robots.txt, rate limit, timeouts, retries, time budget
   extract.py    JSON-LD / CSS-selector extraction, price parsing
@@ -236,7 +224,8 @@ price_monitor/
   rules.py      laptop / phone / monitor rules, reference price
   state.py      persistent JSON state
   alerts.py     duplicate-alert policy
-  notify.py     SMTP email
+  github_issues.py  alerts as GitHub issues (default channel)
+  notify.py     SMTP email (optional channel)
   monitor.py    one run, wiring everything together
 tests/          pytest suite + synthetic fixtures (no live requests)
 ```

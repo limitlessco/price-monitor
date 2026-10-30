@@ -48,6 +48,15 @@ def test_example_config_loads():
     assert names["dna"].selectors.link is None       # the card itself is the link
     assert config.rules.laptop.min_ram_gb == 32
     assert config.rules.monitor.min_usb_c_pd_watts == 65
+    assert config.notifications.channel == "github_issues"
+    assert config.notifications.mention is None  # empty string in the file = default
+
+
+def test_unknown_notification_channel_is_rejected(tmp_path):
+    path = tmp_path / "config.toml"
+    path.write_text('[monitor]\nuser_agent = "x"\n[notifications]\nchannel = "sms"\n', encoding="utf-8")
+    with pytest.raises(ConfigError, match="channel"):
+        load_config(path)
 
 
 def test_config_errors(tmp_path):

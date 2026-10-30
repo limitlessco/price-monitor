@@ -69,7 +69,7 @@ def test_failed_email_keeps_alert_pending(now):
     state = State()
 
     report = run_once(config, state, fetcher, now, RecordingNotifier(fail=True))
-    assert report.email_failed and state.alerts == {}
+    assert report.notify_failed and state.alerts == {}
 
     retry = RecordingNotifier()
     report = run_once(config, state, fetcher, now + timedelta(hours=1), retry)

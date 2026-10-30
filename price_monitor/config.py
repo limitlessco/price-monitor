@@ -85,11 +85,22 @@ class SourceConfig:
     key_query_params: list[str] = field(default_factory=list)  # query params that identify a product
 
 
+CHANNELS = ("github_issues", "email")
+
+
+@dataclass
+class NotificationsConfig:
+    channel: str = "github_issues"
+    github_repository: Optional[str] = None  # default: GITHUB_REPOSITORY (set by Actions)
+    mention: Optional[str] = None  # GitHub username; default: the repository owner
+
+
 @dataclass
 class Config:
     monitor: MonitorSettings
     rules: RulesConfig
     sources: list[SourceConfig]
+    notifications: NotificationsConfig = field(default_factory=NotificationsConfig)
 
 
 def _build(cls, data: dict, where: str):
@@ -152,8 +163,14 @@ def load_config(path: Path) -> Config:
         "monitor": _build(MonitorRule, rules_raw.pop("monitor", {}), "rules.monitor"),
         **rules_raw,
     }, "rules")
+    notifications_raw = {k: (v or None) for k, v in raw.get("notifications", {}).items()}
+    notifications = _build(NotificationsConfig, notifications_raw, "notifications")
+    notifications.channel = notifications.channel or "github_issues"
+    if notifications.channel not in CHANNELS:
+        raise ConfigError(f"[notifications] channel must be one of {list(CHANNELS)}")
     return Config(
         monitor=_build(MonitorSettings, monitor_raw, "monitor"),
         rules=rules,
         sources=[_source(s, i) for i, s in enumerate(raw.get("sources", []))],
+        notifications=notifications,
     )
