@@ -49,10 +49,16 @@ class FakeClock:
         self.now += seconds
 
 
+def fake_dns(host):
+    """No real DNS in tests: one name points inside, everything else is public."""
+    return ["10.1.2.3"] if host == "intranet.example" else ["93.184.215.14", "2606:2800:21f:cb07::1"]
+
+
 def make_fetcher(routes, clock=None, **kwargs):
     clock = clock or FakeClock()
     session = FakeSession(routes)
     kwargs.setdefault("min_interval_seconds", 0)
+    kwargs.setdefault("resolve", fake_dns)
     fetcher = Fetcher("test-monitor/1.0", session=session, sleep=clock.sleep, clock=clock.time, **kwargs)
     return fetcher, session, clock
 
@@ -163,6 +169,11 @@ def test_redirects_are_followed_and_rechecked_against_robots():
     "http://[::1]/",
     "http://localhost/",
     "http://service.cluster.local/",
+    "http://localhost./",              # trailing dot
+    "http://2130706433/",              # 127.0.0.1 as one number
+    "http://0x7f.1/",
+    "http://127.1/",
+    "http://intranet.example/",        # a name that resolves to a private address
     "file:///etc/passwd",
 ])
 def test_redirects_to_internal_addresses_are_refused(target):

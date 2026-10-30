@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import ipaddress
 import logging
+import re
+import socket
 import time
 from typing import Callable, Optional
 from urllib.parse import urljoin, urlsplit
@@ -47,8 +49,10 @@ class Fetcher:
         session: Optional[requests.Session] = None,
         sleep: Callable[[float], None] = time.sleep,
         clock: Callable[[], float] = time.monotonic,
+        resolve: Optional[Callable[[str], list[str]]] = None,
     ):
         self.user_agent = user_agent
+        self._resolve = resolve or _resolve_host
         self.timeout = (min(10.0, timeout_seconds), timeout_seconds)  # (connect, read)
         self.max_retries = max_retries
         self.backoff_seconds = backoff_seconds
@@ -122,7 +126,7 @@ class Fetcher:
         """Request ``url``, following redirects by hand so every hop is checked
         (public http(s) address and, for pages, robots.txt of the hop's host)."""
         for _ in range(MAX_REDIRECTS + 1):
-            _require_public_http_url(url)
+            _require_public_http_url(url, self._resolve)
             if check_robots and not self.allowed(url):
                 raise AccessDenied(f"robots.txt disallows {url}")
             resp = self._request(url, urlsplit(url).netloc)
@@ -173,23 +177,39 @@ class _NotFound(FetchError):
     pass
 
 
-def _require_public_http_url(url: str) -> None:
+def _resolve_host(host: str) -> list[str]:
+    try:
+        return [info[4][0] for info in socket.getaddrinfo(host, None, proto=socket.IPPROTO_TCP)]
+    except socket.gaierror as exc:
+        raise FetchError(f"cannot resolve {host}: {exc}") from exc
+
+
+def _require_public_http_url(url: str, resolve: Callable[[str], list[str]]) -> None:
     """URLs come from fetched pages, so refuse anything that is not a public web address.
 
-    Host names are not resolved here; an IP literal or "localhost" is rejected outright.
+    The host must be a normal name or a canonical IP, and every address it resolves to
+    must be public. Known limit: the connection itself is not pinned to the checked
+    address, so a DNS answer that changes between this check and the request
+    (DNS rebinding) is not caught.
     """
     parts = urlsplit(url)
-    host = (parts.hostname or "").lower()
+    host = (parts.hostname or "").lower().rstrip(".")
     if parts.scheme not in ("http", "https") or not host:
         raise AccessDenied(f"refusing non-http(s) URL {url!r}")
     if host == "localhost" or host.endswith((".localhost", ".local", ".internal")):
         raise AccessDenied(f"refusing internal host {host!r}")
     try:
-        address = ipaddress.ip_address(host)
+        literal = ipaddress.ip_address(host)
     except ValueError:
-        return
-    if not address.is_global:
-        raise AccessDenied(f"refusing non-public address {host!r}")
+        literal = None
+        # "2130706433", "0x7f.1", "127.1": resolvers read these as IP addresses.
+        # Same test as the WHATWG URL standard: the last label is a number.
+        if re.fullmatch(r"\d+|0x[0-9a-f]*", host.rsplit(".", 1)[-1]):
+            raise AccessDenied(f"refusing non-canonical numeric host {host!r}")
+    addresses = [str(literal)] if literal else resolve(host)
+    for address in addresses:
+        if not ipaddress.ip_address(address.split("%", 1)[0]).is_global:
+            raise AccessDenied(f"refusing {host!r}: resolves to non-public address {address}")
 
 
 def _retry_after_seconds(resp: requests.Response) -> Optional[float]:
