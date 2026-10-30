@@ -1,0 +1,45 @@
+<!doctype html>
+<!-- SYNTHETIC TEST FIXTURE. Fictional products. Exercises schema.org priceSpecification
+     price types and shippingDetails. -->
+<html>
+<head>
+<script type="application/ld+json">
+[
+  {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    "name": "Examplephone 12 256 GB musta",
+    "url": "https://shop.example/puhelimet/examplephone-12-256gb/2001",
+    "offers": {
+      "@type": "Offer",
+      "availability": "https://schema.org/InStock",
+      "priceSpecification": [
+        {"@type": "UnitPriceSpecification", "priceType": "https://schema.org/StrikethroughPrice", "price": 999.0, "priceCurrency": "EUR"},
+        {"@type": "UnitPriceSpecification", "price": 279.0, "priceCurrency": "EUR"}
+      ]
+    }
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    "name": "Examplephone 12 128 GB valkoinen",
+    "url": "https://shop.example/puhelimet/examplephone-12-128gb/2002",
+    "offers": [
+      {"@type": "Offer", "price": "289,90", "priceCurrency": "EUR",
+       "shippingDetails": {"@type": "OfferShippingDetails",
+                           "shippingRate": {"@type": "MonetaryAmount", "value": 5.9, "currency": "EUR"}}},
+      {"@type": "Offer", "price": 319.0, "priceCurrency": "EUR"}
+    ]
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    "name": "Examplephone List Price Only",
+    "url": "https://shop.example/puhelimet/list-only/2003",
+    "offers": {"@type": "Offer", "priceSpecification": {"@type": "UnitPriceSpecification", "priceType": "ListPrice", "price": 899.0, "priceCurrency": "EUR"}}
+  }
+]
+</script>
+</head>
+<body></body>
+</html>

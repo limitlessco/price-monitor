@@ -1,0 +1,9 @@
+# SYNTHETIC TEST FIXTURE: RFC 9309 wildcard rules.
+User-agent: *
+Disallow: /haku/
+Disallow: /tuote/*/arvostele
+Disallow: /tuote.aspx$
+Crawl-delay: 7
+
+User-agent: BadBot
+Disallow: /

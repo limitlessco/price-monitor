@@ -1,0 +1,49 @@
+<!doctype html>
+<!-- SYNTHETIC TEST FIXTURE. Fictional products and prices. Uses the public schema.org
+     ItemList/Product/AggregateOffer vocabulary; it is not a copy of any real site. -->
+<html lang="fi">
+<head>
+<title>Kannettavat - test fixture</title>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "Organization", "name": "Example Org"}</script>
+<script type="application/ld+json">{ this is not valid json </script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "ItemList",
+  "itemListElement": [
+    {"@type": "ListItem", "position": 1, "item": {
+      "@type": "Product",
+      "name": "Examplebook Pro 14 (Ryzen 7, 32 GB, 1 TB SSD, 14\", Win 11), kannettava tietokone",
+      "url": "/kannettavat/examplebook-pro-14/1001?ref=list",
+      "offers": {"@type": "AggregateOffer", "lowPrice": 749.0, "highPrice": 999.0, "priceCurrency": "EUR", "offerCount": 3}}},
+    {"@type": "ListItem", "position": 2, "item": {
+      "@type": "Product",
+      "name": "Examplebook Air 13 (Core i5, 16 GB, 512 GB SSD, 13\", Win 11), kannettava tietokone",
+      "url": "https://shop.example/kannettavat/examplebook-air-13/1002",
+      "offers": {"@type": "AggregateOffer", "lowPrice": "599.00", "highPrice": "649.00", "priceCurrency": "EUR"}}},
+    {"@type": "ListItem", "position": 3, "item": {
+      "@type": "Product",
+      "name": "Examplebook Max 16 (Core i7, 32 GB, 1 TB SSD, 16\", Win 11), kannettava tietokone",
+      "url": "https://shop.example/kannettavat/examplebook-max-16/1003",
+      "offers": {"@type": "AggregateOffer", "lowPrice": 1199.0, "priceCurrency": "EUR"}}},
+    {"@type": "ListItem", "position": 4, "item": {
+      "@type": "Product",
+      "name": "Examplebook Lite 15 kannettava tietokone",
+      "url": "https://shop.example/kannettavat/examplebook-lite-15/1004",
+      "offers": {"@type": "AggregateOffer", "lowPrice": 499.0, "priceCurrency": "EUR"}}},
+    {"@type": "ListItem", "position": 5, "item": {
+      "@type": "Product",
+      "name": "Examplebook Sold Out (Ryzen 5, 32 GB, 512 GB SSD, 14\", Win 11)",
+      "url": "https://shop.example/kannettavat/examplebook-sold-out/1005",
+      "offers": {"@type": "Offer", "price": 399.0, "priceCurrency": "EUR", "availability": "https://schema.org/OutOfStock"}}},
+    {"@type": "ListItem", "position": 6, "item": {
+      "@type": "Product",
+      "name": "Examplebook Import (Ryzen 5, 32 GB, 512 GB SSD, 14\", Win 11)",
+      "url": "https://shop.example/kannettavat/examplebook-import/1006",
+      "offers": {"@type": "Offer", "price": 450.0, "priceCurrency": "USD"}}}
+  ]
+}
+</script>
+</head>
+<body><h1>Kannettavat</h1></body>
+</html>

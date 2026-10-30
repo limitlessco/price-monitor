@@ -1,0 +1,80 @@
+name: Price monitor
+
+on:
+  schedule:
+    # Hourly at minute 17: the top of the hour is GitHub's busiest time, and
+    # scheduled runs can be delayed or skipped under load.
+    - cron: "17 * * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run: log matches, send no email, save no state"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write  # needed only to push the state branch
+
+concurrency:
+  group: price-monitor  # never two runs editing the state at once
+  cancel-in-progress: false
+
+env:
+  STATE_BRANCH: monitor-state
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4  # hard cap on billed minutes if something hangs
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Restore state from the ${{ env.STATE_BRANCH }} branch
+        id: restore
+        run: |
+          mkdir -p state
+          if git fetch --depth=1 origin "$STATE_BRANCH" 2>/dev/null; then
+            git show "origin/$STATE_BRANCH:state.json" > state/state.json
+            echo "Restored state ($(wc -c < state/state.json) bytes)"
+          else
+            echo "No state branch yet - starting with empty state"
+          fi
+
+      - name: Run monitor
+        env:
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          ALERT_EMAIL_FROM: ${{ secrets.ALERT_EMAIL_FROM }}
+          ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
+        run: |
+          python -m price_monitor --config config.toml --state state/state.json \
+            ${{ inputs.dry_run && '--dry-run' || '' }}
+
+      # Runs even when the monitor exits non-zero (e.g. email failed), so the
+      # price history of this run is kept. The state branch is a single commit
+      # that is force-pushed each time, so the repository does not grow.
+      - name: Save state to the ${{ env.STATE_BRANCH }} branch
+        if: ${{ !cancelled() && steps.restore.outcome == 'success' && !inputs.dry_run && hashFiles('state/state.json') != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          workdir="$(mktemp -d)"
+          cp state/state.json "$workdir/state.json"
+          cd "$workdir"
+          git init -q
+          git checkout -q --orphan "$STATE_BRANCH"
+          git add state.json
+          git -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit -q -m "Monitor state $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:$STATE_BRANCH"

@@ -1,0 +1,124 @@
+# Price monitor configuration. config.toml is the file the monitor reads;
+# this example is the reference copy with every option explained.
+# NO credentials here: SMTP settings come from environment variables / GitHub Secrets.
+
+[monitor]
+# Identify your bot honestly. Adding a way to contact you (e.g. your repo URL) is good practice.
+user_agent = "personal-price-monitor/1.0 (non-commercial personal price alerts)"
+request_timeout_seconds = 20
+max_retries = 2                    # extra attempts on timeouts, 429 and 5xx only
+min_request_interval_seconds = 5   # per host; a larger robots.txt Crawl-delay wins
+max_run_seconds = 120              # stop fetching after this, to keep Actions minutes low
+max_detail_fetches_per_run = 6     # product pages opened to look up missing specs
+spec_cache_days = 30               # do not re-open a product page for specs within this time
+history_retention_days = 365
+source_failure_alert_threshold = 6 # email once after this many failed runs in a row
+
+[rules]
+# true: an item price under the limit alerts even when shipping is unknown (the email says so).
+# false: unknown shipping makes the verdict UNKNOWN (no alert).
+allow_unknown_shipping = true
+
+[rules.laptop]
+max_price_eur = 800
+min_ram_gb = 32
+
+[rules.phone]
+max_price_eur = 300
+min_reference_price_eur = 700
+# The reference price comes only from this monitor's own past observations of the
+# same product page. Fewer observations / shorter span => reference "unknown".
+min_history_observations = 3
+min_history_span_hours = 48
+
+[rules.monitor]
+max_price_eur = 300
+min_screen_inches = 34
+require_ips = true
+min_refresh_hz = 100
+min_usb_c_pd_watts = 65
+
+# ---------------------------------------------------------------------------
+# Sources. Each [[sources.pages]] entry is a category listing page (search pages
+# are disallowed by these sites' robots.txt, so categories are the way in).
+# Every URL is checked against robots.txt before it is fetched, and a 401/403
+# stops that source for the run - those limits are never worked around.
+# All URLs and selectors below were checked against the live sites on 2026-10-30.
+# Sites change their markup; the monitor emails you if a source stops yielding products.
+# ---------------------------------------------------------------------------
+
+[[sources]]
+name = "hintaseuranta"
+enabled = true
+# Category pages embed a schema.org ItemList (JSON-LD), so no CSS selectors are needed.
+
+[[sources.pages]]
+category = "laptop"
+url = "https://hintaseuranta.fi/kannettavat-tietokoneet/26312"
+
+[[sources.pages]]
+category = "phone"
+url = "https://hintaseuranta.fi/puhelimet/26392"
+
+[[sources.pages]]
+category = "monitor"
+url = "https://hintaseuranta.fi/naytot/26212"
+
+[[sources]]
+name = "hintaopas"
+enabled = true
+# Product links look like /product.php?p=16257879: the "p" parameter IS the product id.
+key_query_params = ["p"]
+# Product pages: spec table rows like "Paneelityyppi | VA".
+detail_selector = '[data-sentry-component="SpecGroup"] [role="listitem"]'
+
+[sources.selectors]
+item = 'article[data-test="ProductGridCard"]'
+title = '[data-test="ProductName"]'
+price = '[class*="StyledPrice"]'           # lowest current price across shops
+description = '[class*="bodysmalltext"]'    # e.g. "34 tuumaa, LCD, 165 Hz"
+
+[[sources.pages]]
+category = "laptop"
+url = "https://hintaopas.fi/c/kannettavat-tietokoneet"
+# The site pages with ?offset=44, 88, ... (allowed by its robots.txt). Raise max_pages to read more.
+page_url_template = "https://hintaopas.fi/c/kannettavat-tietokoneet?offset={offset}"
+items_per_page = 44
+max_pages = 1
+
+[[sources.pages]]
+category = "phone"
+url = "https://hintaopas.fi/c/matkapuhelimet"
+
+[[sources.pages]]
+category = "monitor"
+url = "https://hintaopas.fi/c/naytot"
+
+[[sources]]
+name = "dna"
+enabled = true
+# Product cards show three prices: the one-off price ("selling-price"), a monthly
+# instalment ("/ kk") and "30 pv alin hinta". Only the one-off price is used.
+# Product pages: key selling points and the description (the full spec table is not
+# in the page HTML).
+detail_selector = '[data-testid="key-selling-point"], [data-testid="product-description"]'
+
+[sources.selectors]
+item = '[data-testid="product-listing"] a[href*="/tuote/"]'
+title = '[data-testid="product-listing-name"]'
+price = '[data-testid="product-listing-selling-price"]'
+
+[[sources.pages]]
+category = "laptop"
+url = "https://kauppa.dna.fi/laitteet/tietokoneet-ja-lisalaitteet/kannettavat-tietokoneet"
+# The page's own "next" link points at an internal server name, so the template is used.
+page_url_template = "https://kauppa.dna.fi/laitteet/tietokoneet-ja-lisalaitteet/kannettavat-tietokoneet?page={page}"
+max_pages = 1
+
+[[sources.pages]]
+category = "phone"
+url = "https://kauppa.dna.fi/laitteet/puhelimet-ja-lisalaitteet/puhelimet"
+
+[[sources.pages]]
+category = "monitor"
+url = "https://kauppa.dna.fi/laitteet/tietokoneet-ja-lisalaitteet/naytot"

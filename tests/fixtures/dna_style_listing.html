@@ -1,0 +1,29 @@
+<!doctype html>
+<!-- SYNTHETIC TEST FIXTURE. Fictional products and prices. The attribute names and nesting
+     mirror kauppa.dna.fi category pages as seen on 2026-10-30: one product-listing container,
+     one <a> per card, and three prices per card (one-off, monthly, 30-day lowest). -->
+<html lang="fi">
+<head>
+<link rel="next" href="https://internal-frontend.cluster.local:80/laitteet/kannettavat?page=2">
+</head>
+<body>
+<div data-testid="product-listing">
+  <div class="Box__BoxWrapper">
+    <a data-testid="PKG_EXAMPLE1_b2c" href="https://kauppa.dna.fi/tuote/p/examplebook-go-15-32-gt-ram">
+      <div data-testid="product-badge">Kampanjatuote</div>
+      <p data-testid="product-listing-name">Examplebook Go 15 15,6" Ryzen 5, 32 Gt RAM</p>
+      <p data-testid="product-listing-selling-price">699 €</p>
+      <p data-testid="product-listing-monthlyPrice-price">tai alk. 19,42&nbsp;€ / kk</p>
+      <p data-testid="product-listing-normal-price">30 pv alin hinta 899 €</p>
+    </a>
+  </div>
+  <div class="Box__BoxWrapper">
+    <a data-testid="PKG_EXAMPLE2_b2c" href="/tuote/p/examplephone-x-128-gt">
+      <p data-testid="product-listing-name">Examplephone X, 128 Gt</p>
+      <p data-testid="product-listing-selling-price">1 049 €</p>
+      <p data-testid="product-listing-monthlyPrice-price">tai alk. 29,14&nbsp;€ / kk</p>
+    </a>
+  </div>
+</div>
+</body>
+</html>
