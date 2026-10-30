@@ -17,6 +17,7 @@ from urllib.parse import urljoin, urlsplit
 import requests
 from protego import Protego
 from requests.adapters import HTTPAdapter
+from requests.utils import select_proxy
 from urllib3.connection import HTTPConnection, HTTPSConnection
 from urllib3.connectionpool import HTTPConnectionPool, HTTPSConnectionPool
 
@@ -154,6 +155,8 @@ class Fetcher:
             try:
                 resp = self.session.get(url, timeout=self.timeout, allow_redirects=False)
             except requests.ConnectionError as exc:
+                if isinstance(exc, ProxyNotAllowed):
+                    raise AccessDenied(f"{url}: {exc}") from exc
                 if _caused_by_private_peer(exc):
                     raise AccessDenied(f"refusing {url}: connected address is not public") from exc
                 error = f"{type(exc).__name__}: {exc}"
@@ -228,12 +231,27 @@ class _GuardedHTTPSPool(HTTPSConnectionPool):
     ConnectionCls = _GuardedHTTPSConnection
 
 
+class ProxyNotAllowed(requests.ConnectionError):
+    pass
+
+
 class PublicOnlyAdapter(HTTPAdapter):
-    """requests adapter whose direct connections may only reach public IP addresses."""
+    """requests adapter whose connections may only go directly to public IP addresses.
+
+    Proxies are refused: a proxy connection would check the proxy's address, not the target's.
+    """
 
     def init_poolmanager(self, *args, **kwargs):
         super().init_poolmanager(*args, **kwargs)
         self.poolmanager.pool_classes_by_scheme = {"http": _GuardedHTTPPool, "https": _GuardedHTTPSPool}
+
+    def send(self, request, *args, proxies=None, **kwargs):
+        if select_proxy(request.url, proxies):
+            raise ProxyNotAllowed(
+                "an HTTP(S)_PROXY setting applies to this URL; the monitor only connects directly",
+                request=request,
+            )
+        return super().send(request, *args, proxies=proxies, **kwargs)
 
 
 def _caused_by_private_peer(exc: BaseException) -> bool:

@@ -216,6 +216,7 @@ repository activity. Re-enable the workflow from the Actions tab if that happens
 | `no offers extracted` warning | The page has no schema.org Product data, or your selectors no longer match. Compare View Source with your selectors. |
 | `robots.txt disallows …` | That URL is off-limits. Pick another category URL. Don't work around it. |
 | `HTTP 403` / `AccessDenied` | The site is refusing automated access. Disable that source. |
+| `… HTTP(S)_PROXY setting applies to this URL …` | The monitor only connects directly, so it can check every connection goes to a public address. Run it on a network without a mandatory proxy, or on GitHub Actions. |
 | `giving up on … after 3 attempts` | The site is temporarily down or rate-limiting. It's retried next hour. |
 | Laptops are always UNKNOWN | RAM isn't in the title or on the product page as `32 GB RAM` / `RAM: 32 GB`. Run with `-v` to see each verdict's reasons. |
 | Phones never alert | Expected at first. The reference price needs this monitor's own history (see `[rules.phone]`). |

@@ -238,6 +238,17 @@ def test_connection_guard_blocks_private_peer_even_if_dns_check_was_fooled(monke
         server.shutdown()
 
 
+def test_proxy_settings_are_refused_not_silently_used(monkeypatch):
+    monkeypatch.setenv("HTTPS_PROXY", "http://10.0.0.1:3128")
+    monkeypatch.setenv("NO_PROXY", "")
+    monkeypatch.setattr("price_monitor.fetcher._resolve_host", lambda host: ["93.184.215.14"])
+    fetcher = Fetcher("test-monitor/1.0", max_retries=0, min_interval_seconds=0)  # real, guarded session
+    with pytest.raises(AccessDenied):
+        fetcher.get("https://shop.example/c/laptops")
+    robots = fetcher._robots["shop.example"]
+    assert robots is None  # robots.txt could not be fetched directly -> site treated as disallowed
+
+
 def test_redirect_loop_gives_up():
     fetcher, _, _ = make_fetcher({ROBOTS: ok_robots(), PAGE: [redirect(PAGE)]})
     with pytest.raises(FetchError, match="redirects"):
