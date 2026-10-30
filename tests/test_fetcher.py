@@ -198,6 +198,46 @@ def test_robots_txt_redirect_is_followed():
     assert not fetcher.allowed("http://shop.example/haku/x")
 
 
+def test_userinfo_and_backslash_authorities_are_refused():
+    fetcher, session, _ = make_fetcher({})
+    for url in ("https://shop.example@10.0.0.1/", "https://shop.example\\@10.0.0.1/"):
+        with pytest.raises(AccessDenied):
+            fetcher.get(url)
+    assert session.calls == []
+
+
+def test_connection_guard_blocks_private_peer_even_if_dns_check_was_fooled(monkeypatch, caplog):
+    """DNS-rebinding stand-in: the early check is told the host is public, but the socket
+    really goes to 127.0.0.1. The guarded adapter must refuse before any request is sent."""
+    import http.server
+    import threading
+
+    hits = []
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            hits.append(self.path)
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"User-agent: *\nDisallow:\n")
+
+        def log_message(self, *args):
+            pass
+
+    server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        port = server.server_address[1]
+        monkeypatch.setattr("price_monitor.fetcher._require_public_http_url", lambda url, resolve: None)
+        fetcher = Fetcher("test-monitor/1.0", max_retries=0, min_interval_seconds=0)  # real, guarded session
+        with pytest.raises(AccessDenied):
+            fetcher.get(f"http://127.0.0.1:{port}/page")
+        assert "connected address is not public" in caplog.text  # refused at the socket
+        assert hits == []  # not even robots.txt reached the server
+    finally:
+        server.shutdown()
+
+
 def test_redirect_loop_gives_up():
     fetcher, _, _ = make_fetcher({ROBOTS: ok_robots(), PAGE: [redirect(PAGE)]})
     with pytest.raises(FetchError, match="redirects"):

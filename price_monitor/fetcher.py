@@ -16,6 +16,9 @@ from urllib.parse import urljoin, urlsplit
 
 import requests
 from protego import Protego
+from requests.adapters import HTTPAdapter
+from urllib3.connection import HTTPConnection, HTTPSConnection
+from urllib3.connectionpool import HTTPConnectionPool, HTTPSConnectionPool
 
 log = logging.getLogger(__name__)
 
@@ -58,7 +61,11 @@ class Fetcher:
         self.backoff_seconds = backoff_seconds
         self.min_interval_seconds = min_interval_seconds
         self.max_retry_after_seconds = max_retry_after_seconds
-        self.session = session or requests.Session()
+        if session is None:
+            session = requests.Session()
+            session.mount("http://", PublicOnlyAdapter())
+            session.mount("https://", PublicOnlyAdapter())
+        self.session = session
         self.session.headers.update({"User-Agent": user_agent, "Accept-Language": "fi,en;q=0.8"})
         self._sleep = sleep
         self._clock = clock
@@ -146,7 +153,12 @@ class Fetcher:
             self._throttle(host)
             try:
                 resp = self.session.get(url, timeout=self.timeout, allow_redirects=False)
-            except (requests.ConnectionError, requests.Timeout) as exc:
+            except requests.ConnectionError as exc:
+                if _caused_by_private_peer(exc):
+                    raise AccessDenied(f"refusing {url}: connected address is not public") from exc
+                error = f"{type(exc).__name__}: {exc}"
+                retry_after = None
+            except requests.Timeout as exc:
                 error: str = f"{type(exc).__name__}: {exc}"
                 retry_after = None
             else:
@@ -177,6 +189,69 @@ class _NotFound(FetchError):
     pass
 
 
+# -- connection-level guard -------------------------------------------------------
+#
+# The URL checks below look at the URL text. This guard looks at the socket the HTTP
+# library actually opened, after DNS and before any request bytes are sent, so URL
+# parser differences, IDNA conversion and DNS rebinding cannot reach a private address.
+
+class PrivatePeerError(OSError):
+    pass
+
+
+def _check_peer(sock) -> None:
+    address = sock.getpeername()[0]
+    if not ipaddress.ip_address(address.split("%", 1)[0]).is_global:
+        sock.close()
+        raise PrivatePeerError(f"connected to non-public address {address}")
+
+
+class _GuardedHTTPConnection(HTTPConnection):
+    def _new_conn(self):
+        sock = super()._new_conn()
+        _check_peer(sock)
+        return sock
+
+
+class _GuardedHTTPSConnection(HTTPSConnection):
+    def _new_conn(self):  # HTTPSConnection.connect() wraps this socket in TLS afterwards
+        sock = super()._new_conn()
+        _check_peer(sock)
+        return sock
+
+
+class _GuardedHTTPPool(HTTPConnectionPool):
+    ConnectionCls = _GuardedHTTPConnection
+
+
+class _GuardedHTTPSPool(HTTPSConnectionPool):
+    ConnectionCls = _GuardedHTTPSConnection
+
+
+class PublicOnlyAdapter(HTTPAdapter):
+    """requests adapter whose direct connections may only reach public IP addresses."""
+
+    def init_poolmanager(self, *args, **kwargs):
+        super().init_poolmanager(*args, **kwargs)
+        self.poolmanager.pool_classes_by_scheme = {"http": _GuardedHTTPPool, "https": _GuardedHTTPSPool}
+
+
+def _caused_by_private_peer(exc: BaseException) -> bool:
+    """requests/urllib3 wrap socket errors several times; look through the wrappers."""
+    seen, stack = set(), [exc]
+    while stack:
+        current = stack.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        if isinstance(current, PrivatePeerError):
+            return True
+        stack.extend(a for a in getattr(current, "args", ()) if isinstance(a, BaseException))
+        stack.extend(e for e in (current.__cause__, current.__context__, getattr(current, "reason", None))
+                     if isinstance(e, BaseException))
+    return False
+
+
 def _resolve_host(host: str) -> list[str]:
     try:
         return [info[4][0] for info in socket.getaddrinfo(host, None, proto=socket.IPPROTO_TCP)]
@@ -188,14 +263,15 @@ def _require_public_http_url(url: str, resolve: Callable[[str], list[str]]) -> N
     """URLs come from fetched pages, so refuse anything that is not a public web address.
 
     The host must be a normal name or a canonical IP, and every address it resolves to
-    must be public. Known limit: the connection itself is not pinned to the checked
-    address, so a DNS answer that changes between this check and the request
-    (DNS rebinding) is not caught.
+    must be public. This is the early, readable check; PublicOnlyAdapter re-checks the
+    address actually connected to.
     """
     parts = urlsplit(url)
     host = (parts.hostname or "").lower().rstrip(".")
     if parts.scheme not in ("http", "https") or not host:
         raise AccessDenied(f"refusing non-http(s) URL {url!r}")
+    if "@" in parts.netloc or "\\" in url.split("?", 1)[0]:
+        raise AccessDenied(f"refusing ambiguous URL authority in {url!r}")
     if host == "localhost" or host.endswith((".localhost", ".local", ".internal")):
         raise AccessDenied(f"refusing internal host {host!r}")
     try:
