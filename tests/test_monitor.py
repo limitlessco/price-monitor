@@ -217,3 +217,18 @@ def test_rotation_restarts_when_list_is_shorter_than_max_pages(now):
     state.page_cursors[LAPTOPS] = 3
     run_once(config, state, FakeFetcher(pages), now, None)
     assert state.page_cursors[LAPTOPS] == 2  # empty page 3 = end of list
+
+
+def test_one_repeated_page_mid_list_does_not_stop_reading(now):
+    page = CategoryPage(Category.LAPTOP, LAPTOPS, max_pages=6, page_url_template=LAPTOPS + "?page={page}")
+    config = make_config()
+    config.sources[0].pages = [page]
+    html = fixture_text("listing_jsonld.html")
+    other = html.replace("/1001", "/9001").replace("/1002", "/9002")
+    # Page 2 repeats page 1 (shifting order), page 3 has new products, pages 4-5 repeat: end.
+    pages = {LAPTOPS: html, f"{LAPTOPS}?page=2": html, f"{LAPTOPS}?page=3": other,
+             f"{LAPTOPS}?page=4": other, f"{LAPTOPS}?page=5": other, f"{LAPTOPS}?page=6": other}
+    fetcher = FakeFetcher(pages)
+    run_once(config, State(), fetcher, now, None)
+    listing = [u for u in fetcher.requested if u.startswith(LAPTOPS) and "/" not in u[len(LAPTOPS):]]
+    assert listing == [LAPTOPS] + [f"{LAPTOPS}?page={n}" for n in (2, 3, 4, 5)]

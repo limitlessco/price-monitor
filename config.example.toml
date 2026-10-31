@@ -8,7 +8,7 @@ user_agent = "personal-price-monitor/1.0 (non-commercial personal price alerts)"
 request_timeout_seconds = 20
 max_retries = 2                    # extra attempts on timeouts, 429 and 5xx only
 min_request_interval_seconds = 5   # per host; a larger robots.txt Crawl-delay wins
-max_run_seconds = 110              # stop fetching after this, to keep Actions minutes low
+max_run_seconds = 600              # stop fetching after this, to keep Actions minutes low
 max_detail_fetches_per_run = 6     # product pages opened to look up missing specs
 spec_cache_days = 30               # do not re-open a product page for specs within this time
 history_retention_days = 365
@@ -111,8 +111,9 @@ description = '[class*="bodysmalltext"]'    # e.g. "34 tuumaa, LCD, 165 Hz"
 # Filtered listings (filters chosen on the site, then copied from the address bar).
 # robots.txt rule: with two filters, offset must be the LAST parameter
 # (".../c/naytot?r_7044=...&r_89=...&offset=44" is allowed, "?offset=44&r_7044=...&r_89=..." is not).
-# Long lists rotate: each run reads page 1 + (pages_per_run - 1) further pages and
-# continues from there next run, covering all max_pages over several hours.
+# Every run reads all pages until the list ends (max_pages is only a safety cap).
+# Add pages_per_run = N to a page to read N pages per run in rotation instead
+# (for a private repo, where Actions minutes are limited).
 
 [[sources.pages]]
 category = "laptop"
@@ -120,16 +121,14 @@ category = "laptop"
 url = "https://hintaopas.fi/c/kannettavat-tietokoneet?r_11288=16-209"
 page_url_template = "https://hintaopas.fi/c/kannettavat-tietokoneet?r_11288=16-209&offset={offset}"
 items_per_page = 44
-max_pages = 30
-pages_per_run = 3
+max_pages = 35
 
 [[sources.pages]]
 category = "phone"
 url = "https://hintaopas.fi/c/matkapuhelimet"  # ~1,100 products
 page_url_template = "https://hintaopas.fi/c/matkapuhelimet?offset={offset}"
 items_per_page = 44
-max_pages = 26
-pages_per_run = 2
+max_pages = 32
 
 [[sources.pages]]
 category = "monitor"
@@ -137,8 +136,7 @@ category = "monitor"
 url = "https://hintaopas.fi/c/naytot?r_7044=100-616&r_89=32-154"
 page_url_template = "https://hintaopas.fi/c/naytot?r_7044=100-616&r_89=32-154&offset={offset}"
 items_per_page = 44
-max_pages = 10
-pages_per_run = 2
+max_pages = 14
 
 [[sources]]
 name = "dna"
@@ -159,12 +157,16 @@ category = "laptop"
 url = "https://kauppa.dna.fi/laitteet/tietokoneet-ja-lisalaitteet/kannettavat-tietokoneet"
 # The page's own "next" link points at an internal server name, so the template is used.
 page_url_template = "https://kauppa.dna.fi/laitteet/tietokoneet-ja-lisalaitteet/kannettavat-tietokoneet?page={page}"
-max_pages = 1
+max_pages = 15
 
 [[sources.pages]]
 category = "phone"
 url = "https://kauppa.dna.fi/laitteet/puhelimet-ja-lisalaitteet/puhelimet"
+page_url_template = "https://kauppa.dna.fi/laitteet/puhelimet-ja-lisalaitteet/puhelimet?page={page}"
+max_pages = 15
 
 [[sources.pages]]
 category = "monitor"
 url = "https://kauppa.dna.fi/laitteet/tietokoneet-ja-lisalaitteet/naytot"
+page_url_template = "https://kauppa.dna.fi/laitteet/tietokoneet-ja-lisalaitteet/naytot?page={page}"
+max_pages = 15

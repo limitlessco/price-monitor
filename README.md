@@ -127,12 +127,15 @@ The tests use only the synthetic fixtures in `tests/fixtures/` and make no netwo
   `page_url_template` is used with `{page}` (1, 2, …) or `{offset}` (0, n, 2n, …, which
   needs `items_per_page`). Raise `max_pages` to read more pages, but each page adds
   about 5 seconds per run.
-* Long lists: `max_pages` is how far the list goes, `pages_per_run` is how many pages
-  one run reads. Each run reads page 1 plus the next pages in turn, and the next run
-  continues from there (the position is kept in `state.json`). For example, hintaopas
-  laptops (30 pages, 3 per run) are fully covered about every 14 hours, and page 1 every hour.
-  Keep the whole run under ~100 s: GitHub rounds each run up to whole minutes, and
-  more than 2 minutes per hourly run goes over the free 2,000 minutes of a private repo.
+* Every run reads each list to its end; `max_pages` is only a safety cap. A full run
+  takes about 7-8 minutes, which is fine because public repos get unlimited Actions
+  minutes. For a **private** repo, add `pages_per_run = N` to a page: each run then
+  reads page 1 plus N-1 further pages in turn and continues there next run (the
+  position is kept in `state.json`), so a run stays under ~100 s and the free
+  2,000 minutes a month.
+* hintaopas's order shifts slightly between requests, so a page sometimes repeats the
+  previous one and a few products are missed in a given run. They are picked up in the
+  next runs.
 * With hintaopas filters, put `offset` **last** in `page_url_template`: its robots.txt
   blocks three parameters unless the last one is `offset`.
 

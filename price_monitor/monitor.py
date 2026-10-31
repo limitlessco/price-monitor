@@ -69,9 +69,10 @@ def discover(source: SourceConfig, fetcher: PageFetcher,
         url: Optional[str] = page.url
         rotating = page.pages_per_run is not None and page.pages_per_run < page.max_pages
         numbers = _page_numbers(page, cursors)
+        repeats = 0
         for number in numbers:
             if number > 1:
-                url = page.page_url(number) if rotating else (next_page_url(html, url) or page.page_url(number))
+                url = page.page_url(number) or next_page_url(html, url)  # the configured template wins
                 if url is None:
                     break
             if rotating and number > 1:
@@ -90,8 +91,15 @@ def discover(source: SourceConfig, fetcher: PageFetcher,
                 if rotating and number > 1:
                     cursors[page.url] = 2  # past the end of the list: start over
                 break
-            for offer in found:
-                offers.setdefault(offer.product_key, offer)
+            new = [o for o in found if o.product_key not in offers]
+            for offer in new:
+                offers[offer.product_key] = offer
+            # Past the end some sites repeat their last page instead of an empty one.
+            # One repeated page is not enough: hintaopas sometimes serves a page twice
+            # mid-list (its order shifts between requests), so stop after two in a row.
+            repeats = repeats + 1 if not new and number > 1 else 0
+            if repeats >= 2 and not rotating:
+                break
     return list(offers.values()), errors
 
 

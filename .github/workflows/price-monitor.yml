@@ -26,7 +26,7 @@ env:
 jobs:
   monitor:
     runs-on: ubuntu-latest
-    timeout-minutes: 6  # hard cap on billed minutes if something hangs
+    timeout-minutes: 15  # hard cap on billed minutes if something hangs
     steps:
       - uses: actions/checkout@v4
 
