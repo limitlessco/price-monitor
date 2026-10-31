@@ -44,17 +44,38 @@ def _annotate(level: str, message: str) -> None:
         print(f"::{level}::{message}", flush=True)
 
 
-def discover(source: SourceConfig, fetcher: PageFetcher) -> tuple[list[Offer], list[str]]:
-    """Read every configured category page of one source (with pagination)."""
+def _page_numbers(page: CategoryPage, cursors: dict[str, int]) -> list[int]:
+    """Page 1, then the next pages in rotation (2..max_pages) for long lists."""
+    if page.pages_per_run is None or page.pages_per_run >= page.max_pages:
+        return list(range(1, page.max_pages + 1))
+    start = cursors.get(page.url, 2)
+    if not 2 <= start <= page.max_pages:
+        start = 2
+    rotating = range(2, page.max_pages + 1)
+    i = start - 2
+    return [1] + [rotating[(i + k) % len(rotating)] for k in range(page.pages_per_run - 1)]
+
+
+def discover(source: SourceConfig, fetcher: PageFetcher,
+             cursors: Optional[dict[str, int]] = None) -> tuple[list[Offer], list[str]]:
+    """Read the configured category pages of one source (with pagination).
+
+    ``cursors`` (from the state) remembers where rotating lists continue next run.
+    """
+    cursors = {} if cursors is None else cursors
     offers: dict[str, Offer] = {}
     errors: list[str] = []
     for page in source.pages:
         url: Optional[str] = page.url
-        for number in range(1, page.max_pages + 1):
+        rotating = page.pages_per_run is not None and page.pages_per_run < page.max_pages
+        numbers = _page_numbers(page, cursors)
+        for number in numbers:
             if number > 1:
-                url = next_page_url(html, url) or page.page_url(number)
+                url = page.page_url(number) if rotating else (next_page_url(html, url) or page.page_url(number))
                 if url is None:
                     break
+            if rotating and number > 1:
+                cursors[page.url] = number + 1  # continue after this page next run
             try:
                 html = fetcher.get(url)
             except BudgetExceeded:
@@ -66,6 +87,8 @@ def discover(source: SourceConfig, fetcher: PageFetcher) -> tuple[list[Offer], l
             found = extract_offers(html, url, source.name, page.category, source.selectors, source.key_query_params)
             log.info("[%s] %s: %d offers", source.name, url, len(found))
             if not found:
+                if rotating and number > 1:
+                    cursors[page.url] = 2  # past the end of the list: start over
                 break
             for offer in found:
                 offers.setdefault(offer.product_key, offer)
@@ -88,7 +111,7 @@ def run_once(
         if not source.enabled:
             continue
         try:
-            offers, errors = discover(source, fetcher)
+            offers, errors = discover(source, fetcher, state.page_cursors)
         except BudgetExceeded:
             report.budget_exhausted = True
             log.warning("Run time budget used up; remaining sources skipped this run")

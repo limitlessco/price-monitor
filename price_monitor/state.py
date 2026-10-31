@@ -48,6 +48,7 @@ class State:
         self.products: dict[str, dict] = data.get("products", {})
         self.alerts: dict[str, dict] = data.get("alerts", {})
         self.sources: dict[str, dict] = data.get("sources", {})
+        self.page_cursors: dict[str, int] = data.get("page_cursors", {})  # listing URL -> next page number
 
     # -- persistence ----------------------------------------------------------
 
@@ -69,7 +70,8 @@ class State:
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(path.suffix + ".tmp")
-        payload = {"version": STATE_VERSION, "products": self.products, "alerts": self.alerts, "sources": self.sources}
+        payload = {"version": STATE_VERSION, "products": self.products, "alerts": self.alerts, "sources": self.sources,
+                   "page_cursors": self.page_cursors}
         tmp.write_text(json.dumps(payload, indent=1, sort_keys=True, ensure_ascii=False), encoding="utf-8")
         os.replace(tmp, path)  # atomic: a crash never leaves a half-written state file
 

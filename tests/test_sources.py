@@ -5,6 +5,8 @@ from pathlib import Path
 import pytest
 
 from price_monitor.config import load_config
+from protego import Protego
+
 from price_monitor.extract import detail_text, extract_offers, next_page_url
 from price_monitor.models import Category
 from price_monitor.specs import parse_specs
@@ -41,8 +43,17 @@ def test_hintaopas_cards():
 
 def test_hintaopas_offset_pagination():
     page = SOURCES["hintaopas"].pages[0]
-    assert page.page_url(1) == "https://hintaopas.fi/c/kannettavat-tietokoneet?offset=0"
-    assert page.page_url(3) == "https://hintaopas.fi/c/kannettavat-tietokoneet?offset=88"
+    assert page.page_url(3) == "https://hintaopas.fi/c/kannettavat-tietokoneet?r_11288=16-209&offset=88"
+
+
+def test_hintaopas_filtered_pages_respect_robots_txt():
+    # Real hintaopas.fi rules (2026-10-31): 3+ parameters only with offset last.
+    robots = Protego.parse("User-agent: *\nDisallow: /c/*?*&*&*\nAllow: /c/*?*&*&offset=*\n")
+    for page in SOURCES["hintaopas"].pages:
+        for number in range(1, page.max_pages + 1):
+            url = page.page_url(number) if number > 1 else page.url
+            assert robots.can_fetch(url, "price-monitor"), url
+    assert not robots.can_fetch("https://hintaopas.fi/c/naytot?offset=44&r_7044=100-616&r_89=32-154", "x")
 
 
 def test_hintaopas_spec_rows_only():

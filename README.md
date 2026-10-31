@@ -127,6 +127,14 @@ The tests use only the synthetic fixtures in `tests/fixtures/` and make no netwo
   `page_url_template` is used with `{page}` (1, 2, …) or `{offset}` (0, n, 2n, …, which
   needs `items_per_page`). Raise `max_pages` to read more pages, but each page adds
   about 5 seconds per run.
+* Long lists: `max_pages` is how far the list goes, `pages_per_run` is how many pages
+  one run reads. Each run reads page 1 plus the next pages in turn, and the next run
+  continues from there (the position is kept in `state.json`). For example, hintaopas
+  laptops (30 pages, 3 per run) are fully covered about every 14 hours, and page 1 every hour.
+  Keep the whole run under ~100 s: GitHub rounds each run up to whole minutes, and
+  more than 2 minutes per hourly run goes over the free 2,000 minutes of a private repo.
+* With hintaopas filters, put `offset` **last** in `page_url_template`: its robots.txt
+  blocks three parameters unless the last one is `offset`.
 
 ### Fixing CSS selectors after a site redesign
 

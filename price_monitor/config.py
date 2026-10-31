@@ -95,6 +95,9 @@ class CategoryPage:
     # Copied from the real site, with {page} (1, 2, ...) or {offset} (0, n, 2n, ...).
     page_url_template: Optional[str] = None
     items_per_page: Optional[int] = None  # needed for {offset}
+    # Long lists: read page 1 plus (pages_per_run - 1) further pages per run, continuing
+    # where the previous run stopped, so all max_pages are covered over several runs.
+    pages_per_run: Optional[int] = None  # None: read all max_pages every run
 
     def page_url(self, number: int) -> Optional[str]:
         if not self.page_url_template:
@@ -156,7 +159,13 @@ def _source(raw: dict[str, Any], index: int) -> SourceConfig:
                 raise ConfigError(f"{where}.pages[{j}]: page_url_template must contain {{page}} or {{offset}}")
             if "{offset}" in template and not page.get("items_per_page"):
                 raise ConfigError(f"{where}.pages[{j}]: {{offset}} needs items_per_page")
-        pages.append(_build(CategoryPage, page, f"{where}.pages[{j}]"))
+        built = _build(CategoryPage, page, f"{where}.pages[{j}]")
+        if built.pages_per_run is not None:
+            if template is None:
+                raise ConfigError(f"{where}.pages[{j}]: pages_per_run needs page_url_template")
+            if not 1 <= built.pages_per_run <= built.max_pages:
+                raise ConfigError(f"{where}.pages[{j}]: pages_per_run must be between 1 and max_pages")
+        pages.append(built)
     selectors = raw.get("selectors")
     if selectors:
         selectors = {k: (v or None) for k, v in selectors.items()}

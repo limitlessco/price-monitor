@@ -87,3 +87,11 @@ def test_drop_fraction_must_be_a_fraction(tmp_path):
     path.write_text('[monitor]\nuser_agent = "t"\n[rules.laptop_drop]\nmin_drop_fraction = 40\n', encoding="utf-8")
     with pytest.raises(ConfigError, match="between 0 and 1"):
         load_config(path)
+
+
+def test_pages_per_run_needs_a_template(tmp_path):
+    path = tmp_path / "c.toml"
+    path.write_text('[monitor]\nuser_agent = "t"\n[[sources]]\nname = "s"\n[[sources.pages]]\n'
+                    'category = "laptop"\nurl = "https://x.example/c"\nmax_pages = 5\npages_per_run = 2\n', encoding="utf-8")
+    with pytest.raises(ConfigError, match="needs page_url_template"):
+        load_config(path)

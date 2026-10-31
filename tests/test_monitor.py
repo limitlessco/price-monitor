@@ -187,3 +187,33 @@ def test_laptop_price_drop_alerts(now):
     report = run_once(config, state, fetcher, now, RecordingNotifier())
     assert [(a.offer.product_key, a.result.rule) for a in report.alerts] == [(key, "laptop_drop")]
     assert "below usual 2000.00" in "; ".join(report.alerts[0].result.reasons)
+
+
+def test_long_lists_rotate_through_pages_across_runs(now):
+    page = CategoryPage(Category.LAPTOP, LAPTOPS, max_pages=4, pages_per_run=2,
+                        page_url_template=LAPTOPS + "?page={page}")
+    config = make_config()
+    config.sources[0].pages = [page]
+    html = fixture_text("listing_jsonld.html")
+    pages = {LAPTOPS: html, **{f"{LAPTOPS}?page={n}": html for n in (2, 3, 4)}}
+    state = State()
+    seen = []
+    for run in range(4):
+        fetcher = FakeFetcher(pages)
+        run_once(config, state, fetcher, now + timedelta(hours=run), None)
+        seen.append([u for u in fetcher.requested[1:] if "?page=" in u])  # page 1 is read every run
+        assert fetcher.requested[0] == LAPTOPS
+    assert seen == [[f"{LAPTOPS}?page=2"], [f"{LAPTOPS}?page=3"], [f"{LAPTOPS}?page=4"], [f"{LAPTOPS}?page=2"]]
+
+
+def test_rotation_restarts_when_list_is_shorter_than_max_pages(now):
+    page = CategoryPage(Category.LAPTOP, LAPTOPS, max_pages=5, pages_per_run=2,
+                        page_url_template=LAPTOPS + "?page={page}")
+    config = make_config()
+    config.sources[0].pages = [page]
+    html = fixture_text("listing_jsonld.html")
+    pages = {LAPTOPS: html, f"{LAPTOPS}?page=2": html, f"{LAPTOPS}?page=3": "<html></html>"}
+    state = State()
+    state.page_cursors[LAPTOPS] = 3
+    run_once(config, state, FakeFetcher(pages), now, None)
+    assert state.page_cursors[LAPTOPS] == 2  # empty page 3 = end of list

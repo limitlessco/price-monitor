@@ -8,7 +8,7 @@ user_agent = "personal-price-monitor/1.0 (non-commercial personal price alerts)"
 request_timeout_seconds = 20
 max_retries = 2                    # extra attempts on timeouts, 429 and 5xx only
 min_request_interval_seconds = 5   # per host; a larger robots.txt Crawl-delay wins
-max_run_seconds = 120              # stop fetching after this, to keep Actions minutes low
+max_run_seconds = 110              # stop fetching after this, to keep Actions minutes low
 max_detail_fetches_per_run = 6     # product pages opened to look up missing specs
 spec_cache_days = 30               # do not re-open a product page for specs within this time
 history_retention_days = 365
@@ -108,21 +108,37 @@ title = '[data-test="ProductName"]'
 price = '[class*="StyledPrice"]'           # lowest current price across shops
 description = '[class*="bodysmalltext"]'    # e.g. "34 tuumaa, LCD, 165 Hz"
 
+# Filtered listings (filters chosen on the site, then copied from the address bar).
+# robots.txt rule: with two filters, offset must be the LAST parameter
+# (".../c/naytot?r_7044=...&r_89=...&offset=44" is allowed, "?offset=44&r_7044=...&r_89=..." is not).
+# Long lists rotate: each run reads page 1 + (pages_per_run - 1) further pages and
+# continues from there next run, covering all max_pages over several hours.
+
 [[sources.pages]]
 category = "laptop"
-url = "https://hintaopas.fi/c/kannettavat-tietokoneet"
-# The site pages with ?offset=44, 88, ... (allowed by its robots.txt). Raise max_pages to read more.
-page_url_template = "https://hintaopas.fi/c/kannettavat-tietokoneet?offset={offset}"
+# RAM 16 GB or more (covers both the 32 GB rule and the 16 GB price-drop rule). ~1,200 products.
+url = "https://hintaopas.fi/c/kannettavat-tietokoneet?r_11288=16-209"
+page_url_template = "https://hintaopas.fi/c/kannettavat-tietokoneet?r_11288=16-209&offset={offset}"
 items_per_page = 44
-max_pages = 1
+max_pages = 30
+pages_per_run = 3
 
 [[sources.pages]]
 category = "phone"
-url = "https://hintaopas.fi/c/matkapuhelimet"
+url = "https://hintaopas.fi/c/matkapuhelimet"  # ~1,100 products
+page_url_template = "https://hintaopas.fi/c/matkapuhelimet?offset={offset}"
+items_per_page = 44
+max_pages = 26
+pages_per_run = 2
 
 [[sources.pages]]
 category = "monitor"
-url = "https://hintaopas.fi/c/naytot"
+# 32" or larger and 100 Hz or more (covers both monitor rules). ~380 products.
+url = "https://hintaopas.fi/c/naytot?r_7044=100-616&r_89=32-154"
+page_url_template = "https://hintaopas.fi/c/naytot?r_7044=100-616&r_89=32-154&offset={offset}"
+items_per_page = 44
+max_pages = 10
+pages_per_run = 2
 
 [[sources]]
 name = "dna"
