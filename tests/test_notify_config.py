@@ -70,3 +70,20 @@ def test_config_errors(tmp_path):
         load_config(path)
     with pytest.raises(ConfigError, match="not found"):
         load_config(tmp_path / "missing.toml")
+
+
+def test_drop_rules_load_from_config(tmp_path):
+    path = tmp_path / "c.toml"
+    path.write_text('[monitor]\nuser_agent = "t"\n[rules.monitor_drop]\nmin_drop_fraction = 0.25\n'
+                    '[rules.phone_drop]\nenabled = false\n', encoding="utf-8")
+    rules = load_config(path).rules
+    assert rules.monitor_drop.min_drop_fraction == 0.25 and rules.monitor_drop.min_screen_inches is None
+    assert rules.phone_drop.enabled is False
+    assert rules.laptop_drop.min_ram_gb == 16  # untouched default
+
+
+def test_drop_fraction_must_be_a_fraction(tmp_path):
+    path = tmp_path / "c.toml"
+    path.write_text('[monitor]\nuser_agent = "t"\n[rules.laptop_drop]\nmin_drop_fraction = 40\n', encoding="utf-8")
+    with pytest.raises(ConfigError, match="between 0 and 1"):
+        load_config(path)

@@ -11,6 +11,18 @@ the GitHub app), so no email account or password is stored anywhere. It never bu
 | Phone   | price < 300 € **and** the monitor's *own* price history for that exact product page is > 700 € |
 | Monitor | ≥ 34", IPS, ≥ 100 Hz, USB-C Power Delivery ≥ 65 W **and** price < 300 €                         |
 
+Price-drop rules (on top of the ones above). The "usual price" is the median of the monitor's
+*own* earlier observations of the same product page (at least 3 sightings over 48 hours), so
+these also need a few days of history before they can alert:
+
+| Rule               | Alerts when                                                                        |
+|--------------------|------------------------------------------------------------------------------------|
+| Phone price drop   | usual price > 500 € **and** price ≥ 40 % below it                                  |
+| Laptop price drop  | RAM ≥ 16 GB, usual price > 750 € **and** price ≥ 40 % below it                     |
+| Monitor price drop | ≥ 32", IPS, ≥ 100 Hz, USB-C PD ≥ 65 W **and** price ≥ 30 % below the usual price   |
+
+A product matching several rules gets one issue, not one per rule.
+
 Each check gives **MATCH**, **NO_MATCH** or **UNKNOWN**. Only MATCH sends an alert.
 Any spec that is missing stays unknown and is never guessed.
 

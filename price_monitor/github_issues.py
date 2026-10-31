@@ -67,10 +67,17 @@ def _safe_link(url: str) -> str:
     return f"<{url}>" if re.fullmatch(r"https?://[^\s<>]+", url) else _inline(url)
 
 
+def _rule_label(rule: str) -> str:
+    """'laptop' -> 'Laptop', 'laptop_drop' -> 'Laptop price drop'."""
+    category, _, kind = rule.partition("_")
+    return category.capitalize() + (" price drop" if kind == "drop" else "")
+
+
 def deal_issue(alert: Alert, mention: Optional[str]) -> dict:
     o, r = alert.offer, alert.result
+    label = _rule_label(r.rule)
     lines = [
-        f"@{mention} a new deal matches your **{r.rule}** rule." if mention else f"A new deal matches your **{r.rule}** rule.",
+        f"@{mention} a new deal matches your **{label}** rule." if mention else f"A new deal matches your **{label}** rule.",
         "",
         f"- **Product:** {_inline(o.title)}",
         f"- **Source:** {o.source}",
@@ -80,9 +87,9 @@ def deal_issue(alert: Alert, mention: Optional[str]) -> dict:
         lines.append("- **Shipping:** unknown - the total may be higher")
     else:
         lines.append(f"- **Shipping:** {o.shipping_eur:.2f} € (total {o.total_price_eur:.2f} €)")
-    if r.rule == "phone":
+    if r.rule == "phone" or r.rule.endswith("_drop"):
         ref = "unknown" if r.reference_price_eur is None else f"{r.reference_price_eur:.2f} € (own observed history)"
-        lines.append(f"- **Reference price:** {ref}")
+        lines.append(f"- **{'Usual' if r.rule.endswith('_drop') else 'Reference'} price:** {ref}")
     lines += [
         f"- **Why:** {_inline('; '.join(r.reasons), 400)}",
         f"- **Link:** {_safe_link(o.url)}",
@@ -93,7 +100,7 @@ def deal_issue(alert: Alert, mention: Optional[str]) -> dict:
         f"<sub>alert key: {_inline(alert.key, 300)}</sub>",
     ]
     return {
-        "title": _title(f"{r.rule.capitalize()}: {o.price_eur:.2f} € - {o.title}"),
+        "title": _title(f"{label}: {o.price_eur:.2f} € - {o.title}"),
         "body": "\n".join(lines),
         "labels": [DEAL_LABEL[0]],
     }

@@ -52,10 +52,38 @@ class MonitorRule:
 
 
 @dataclass
+class DropRule:
+    """Alert when the price falls this much below the product's own usual price.
+
+    The usual price is the median of this monitor's earlier observations of the
+    same product page (see rules.reference_price); never a crossed-out price.
+    """
+    enabled: bool = True
+    min_drop_fraction: float = 0.40
+    min_normal_price_eur: float = 0  # the usual price must be above this
+    min_ram_gb: Optional[int] = None  # laptops
+    min_screen_inches: Optional[float] = None  # monitors
+    require_ips: bool = False
+    min_refresh_hz: Optional[int] = None
+    min_usb_c_pd_watts: Optional[int] = None
+    min_history_observations: int = 3
+    min_history_span_hours: float = 48
+
+
+DROP_RULES = ("laptop_drop", "phone_drop", "monitor_drop")
+
+
+@dataclass
 class RulesConfig:
     laptop: LaptopRule = field(default_factory=LaptopRule)
     phone: PhoneRule = field(default_factory=PhoneRule)
     monitor: MonitorRule = field(default_factory=MonitorRule)
+    laptop_drop: DropRule = field(default_factory=lambda: DropRule(
+        min_drop_fraction=0.40, min_normal_price_eur=750, min_ram_gb=16))
+    phone_drop: DropRule = field(default_factory=lambda: DropRule(
+        min_drop_fraction=0.40, min_normal_price_eur=500))
+    monitor_drop: DropRule = field(default_factory=lambda: DropRule(
+        min_drop_fraction=0.30, min_screen_inches=32, require_ips=True, min_refresh_hz=100, min_usb_c_pd_watts=65))
     allow_unknown_shipping: bool = True
 
 
@@ -161,8 +189,12 @@ def load_config(path: Path) -> Config:
         "laptop": _build(LaptopRule, rules_raw.pop("laptop", {}), "rules.laptop"),
         "phone": _build(PhoneRule, rules_raw.pop("phone", {}), "rules.phone"),
         "monitor": _build(MonitorRule, rules_raw.pop("monitor", {}), "rules.monitor"),
+        **{name: _build(DropRule, rules_raw.pop(name), f"rules.{name}") for name in DROP_RULES if name in rules_raw},
         **rules_raw,
     }, "rules")
+    for name in DROP_RULES:
+        if not 0 < getattr(rules, name).min_drop_fraction < 1:
+            raise ConfigError(f"[rules.{name}] min_drop_fraction must be between 0 and 1 (0.40 = 40 %)")
     notifications_raw = {k: (v or None) for k, v in raw.get("notifications", {}).items()}
     notifications = _build(NotificationsConfig, notifications_raw, "notifications")
     notifications.channel = notifications.channel or "github_issues"

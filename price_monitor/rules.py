@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from .config import PhoneRule, LaptopRule, MonitorRule, RulesConfig
+from .config import DropRule, PhoneRule, LaptopRule, MonitorRule, RulesConfig
 from .models import Category, Offer, RuleResult, Verdict
 from .state import PricePoint
 
@@ -110,6 +110,49 @@ def evaluate_phone(
     else:
         checks.append((Verdict.NO_MATCH, f"reference price {ref:.2f} € is not above {rule.min_reference_price_eur:.0f} €"))
     return _combine("phone", checks, [], ref)
+
+
+def evaluate_drop(offer: Offer, rule: DropRule, name: str, history: list[PricePoint]) -> RuleResult:
+    """Price at least min_drop_fraction below the product's own usual (median) price."""
+    missing: list[str] = []
+    s = offer.specs
+    checks: list[Check] = []
+    ref = reference_price(history, rule.min_history_observations, rule.min_history_span_hours)
+    if ref is None:
+        checks.append((Verdict.UNKNOWN, "usual price unknown (insufficient own price history)"))
+    elif ref <= rule.min_normal_price_eur:
+        checks.append((Verdict.NO_MATCH, f"usual price {ref:.2f} € is not above {rule.min_normal_price_eur:.0f} €"))
+    else:
+        drop = (ref - offer.price_eur) / ref
+        if drop >= rule.min_drop_fraction:
+            checks.append((Verdict.MATCH, f"price {offer.price_eur:.2f} € is {drop:.0%} below usual {ref:.2f} €"))
+        else:
+            checks.append((Verdict.NO_MATCH, f"price {offer.price_eur:.2f} € is only {max(drop, 0):.0%} below usual {ref:.2f} €"))
+    if rule.min_ram_gb is not None:
+        checks.append(_at_least(s.ram_gb, rule.min_ram_gb, "RAM", " GB", missing, "ram_gb"))
+    if rule.min_screen_inches is not None:
+        checks.append(_at_least(s.screen_inches, rule.min_screen_inches, "screen", '"', missing, "screen_inches"))
+    if rule.min_refresh_hz is not None:
+        checks.append(_at_least(s.refresh_hz, rule.min_refresh_hz, "refresh", " Hz", missing, "refresh_hz"))
+    if rule.min_usb_c_pd_watts is not None:
+        checks.append(_at_least(s.usb_c_pd_watts, rule.min_usb_c_pd_watts, "USB-C PD", " W", missing, "usb_c_pd_watts"))
+    if rule.require_ips:
+        if s.panel_ips is None:
+            missing.append("panel_ips")
+            checks.append((Verdict.UNKNOWN, "panel type unknown"))
+        else:
+            checks.append((Verdict.MATCH, "IPS panel") if s.panel_ips else (Verdict.NO_MATCH, "not an IPS panel"))
+    return _combine(name, checks, missing, ref)
+
+
+def evaluate_all(offer: Offer, rules: RulesConfig, history: list[PricePoint]) -> list[RuleResult]:
+    """The fixed-limit rule, then the price-drop rule for the offer's category."""
+    results = [evaluate(offer, rules, history)]
+    name = f"{offer.category.value}_drop"
+    drop_rule: DropRule = getattr(rules, name)
+    if drop_rule.enabled:
+        results.append(evaluate_drop(offer, drop_rule, name, history))
+    return results
 
 
 def evaluate(offer: Offer, rules: RulesConfig, history: list[PricePoint]) -> RuleResult:

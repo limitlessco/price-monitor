@@ -65,7 +65,7 @@ def _format_alert(alert: Alert) -> str:
         lines.append("  Shipping: unknown - the total may be higher")
     else:
         lines.append(f"  Shipping: {o.shipping_eur:.2f} €   Total: {o.total_price_eur:.2f} €")
-    if r.rule == "phone":
+    if r.rule == "phone" or r.rule.endswith("_drop"):
         ref = "unknown" if r.reference_price_eur is None else f"{r.reference_price_eur:.2f} € (own observed history)"
         lines.append(f"  Reference price: {ref}")
     lines += [f"  Why: {'; '.join(r.reasons)}", f"  Link: {o.url}"]

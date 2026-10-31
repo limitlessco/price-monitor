@@ -2,7 +2,7 @@ from datetime import timedelta
 
 from price_monitor.config import LaptopRule, MonitorRule, PhoneRule, RulesConfig
 from price_monitor.models import Category, Offer, Specs, Verdict
-from price_monitor.rules import check_price, evaluate, reference_price
+from price_monitor.rules import check_price, evaluate, evaluate_all, evaluate_drop, reference_price
 from price_monitor.state import PricePoint
 
 
@@ -111,3 +111,46 @@ def test_phone_rule_thresholds_from_config(now):
 def test_laptop_threshold_from_config():
     rules = RulesConfig(laptop=LaptopRule(max_price_eur=900, min_ram_gb=16))
     assert evaluate(offer(Category.LAPTOP, 850, ram_gb=16), rules, []).verdict is Verdict.MATCH
+
+
+# -- price drops -----------------------------------------------------------------
+
+def usual(price, start):
+    return [point(price, start - timedelta(days=4), 72, 10)]
+
+
+def test_laptop_drop_needs_ram_usual_price_and_40_percent(now):
+    rule = RulesConfig().laptop_drop
+    history = usual(1000, now)
+    assert evaluate_drop(offer(Category.LAPTOP, 600, ram_gb=16), rule, "laptop_drop", history).verdict is Verdict.MATCH
+    assert evaluate_drop(offer(Category.LAPTOP, 601, ram_gb=16), rule, "laptop_drop", history).verdict is Verdict.NO_MATCH
+    assert evaluate_drop(offer(Category.LAPTOP, 600, ram_gb=8), rule, "laptop_drop", history).verdict is Verdict.NO_MATCH
+    unknown = evaluate_drop(offer(Category.LAPTOP, 600), rule, "laptop_drop", history)
+    assert unknown.verdict is Verdict.UNKNOWN and unknown.missing_specs == ["ram_gb"]
+    # Usual price 750 € is not "over 750 €".
+    assert evaluate_drop(offer(Category.LAPTOP, 400, ram_gb=16), rule, "laptop_drop", usual(750, now)).verdict is Verdict.NO_MATCH
+
+
+def test_phone_drop_needs_own_history(now):
+    rule = RulesConfig().phone_drop
+    assert evaluate_drop(offer(Category.PHONE, 360), rule, "phone_drop", usual(600, now)).verdict is Verdict.MATCH
+    assert evaluate_drop(offer(Category.PHONE, 250), rule, "phone_drop", usual(500, now)).verdict is Verdict.NO_MATCH
+    assert evaluate_drop(offer(Category.PHONE, 100), rule, "phone_drop", []).verdict is Verdict.UNKNOWN
+
+
+def test_monitor_drop_checks_specs_and_30_percent(now):
+    rule = RulesConfig().monitor_drop
+    specs = dict(GOOD_MONITOR, screen_inches=32)
+    history = usual(500, now)
+    assert evaluate_drop(offer(Category.MONITOR, 350, **specs), rule, "monitor_drop", history).verdict is Verdict.MATCH
+    assert evaluate_drop(offer(Category.MONITOR, 351, **specs), rule, "monitor_drop", history).verdict is Verdict.NO_MATCH
+    small = dict(specs, screen_inches=31.5)
+    assert evaluate_drop(offer(Category.MONITOR, 300, **small), rule, "monitor_drop", history).verdict is Verdict.NO_MATCH
+
+
+def test_evaluate_all_adds_drop_rule_unless_disabled(now):
+    rules = RulesConfig()
+    o = offer(Category.LAPTOP, 600, ram_gb=16)
+    assert [r.rule for r in evaluate_all(o, rules, usual(1000, now))] == ["laptop", "laptop_drop"]
+    rules.laptop_drop.enabled = False
+    assert [r.rule for r in evaluate_all(o, rules, [])] == ["laptop"]

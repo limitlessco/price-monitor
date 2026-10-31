@@ -158,3 +158,32 @@ def test_disabled_sources_are_not_fetched(now, enabled):
     fetcher = FakeFetcher({})
     run_once(config, State(), fetcher, now, None)
     assert fetcher.requested == []
+
+
+def test_deal_matching_two_rules_alerts_once_across_runs(now):
+    phones = "https://shop.example/puhelimet"
+    config = make_config((Category.PHONE, phones))
+    key = "https://shop.example/puhelimet/examplephone-12-256gb/2001"
+    state = State()
+    for hour in range(0, 96, 8):
+        state.record_price("shop", key, "Examplephone 12 256 GB", 749.0, now - timedelta(days=5, hours=-hour))
+    fetcher = FakeFetcher({phones: fixture_text("offer_types.html")})
+
+    first = run_once(config, state, fetcher, now, RecordingNotifier())
+    assert [a.result.rule for a in first.alerts] == ["phone"]  # not also "phone_drop"
+    second = run_once(config, state, fetcher, now + timedelta(hours=1), RecordingNotifier())
+    assert second.alerts == []
+
+
+def test_laptop_price_drop_alerts(now):
+    config = make_config((Category.LAPTOP, LAPTOPS))
+    config.rules.laptop.max_price_eur = 1  # only the drop rule can match
+    key = "https://shop.example/kannettavat/examplebook-pro-14/1001"
+    state = State()
+    for hour in range(0, 96, 8):  # the monitor saw it at 2000 € for days
+        state.record_price("shop", key, "Examplebook Pro 14", 2000.0, now - timedelta(days=5, hours=-hour))
+    fetcher = FakeFetcher({LAPTOPS: fixture_text("listing_jsonld.html")})
+
+    report = run_once(config, state, fetcher, now, RecordingNotifier())
+    assert [(a.offer.product_key, a.result.rule) for a in report.alerts] == [(key, "laptop_drop")]
+    assert "below usual 2000.00" in "; ".join(report.alerts[0].result.reasons)

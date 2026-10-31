@@ -46,6 +46,28 @@ require_ips = true
 min_refresh_hz = 100
 min_usb_c_pd_watts = 65
 
+# Price-drop alerts: the price is at least min_drop_fraction below the product's
+# usual price (median of this monitor's own earlier observations of the same
+# product page; needs min_history_observations over min_history_span_hours).
+[rules.phone_drop]
+enabled = true
+min_drop_fraction = 0.40
+min_normal_price_eur = 500
+
+[rules.laptop_drop]
+enabled = true
+min_drop_fraction = 0.40
+min_normal_price_eur = 750
+min_ram_gb = 16
+
+[rules.monitor_drop]
+enabled = true
+min_drop_fraction = 0.30
+min_screen_inches = 32
+require_ips = true
+min_refresh_hz = 100
+min_usb_c_pd_watts = 65
+
 # ---------------------------------------------------------------------------
 # Sources. Each [[sources.pages]] entry is a category listing page (search pages
 # are disallowed by these sites' robots.txt, so categories are the way in).

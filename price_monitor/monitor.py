@@ -15,7 +15,7 @@ from .extract import detail_text, extract_offers, next_page_url
 from .fetcher import BudgetExceeded, FetchError
 from .models import Alert, Offer, SourceProblem, Verdict
 from .notify import NotifyError
-from .rules import evaluate
+from .rules import evaluate_all
 from .specs import parse_specs
 from .state import State
 
@@ -108,11 +108,13 @@ def run_once(
             if cached is not None:
                 offer.specs = offer.specs.merged_with(cached)
             history = state.history(source.name, offer.product_key)  # before recording today's price
-            result = evaluate(offer, config.rules, history)
+            results = evaluate_all(offer, config.rules, history)
 
             # Missing specs: look at the product page once, then cache the result.
             # Only on the source's own host - product URLs come from the fetched page.
-            if (result.verdict is Verdict.UNKNOWN and result.missing_specs and source.fetch_details
+            needs_specs = not any(r.verdict is Verdict.MATCH for r in results) and any(
+                r.verdict is Verdict.UNKNOWN and r.missing_specs for r in results)
+            if (needs_specs and source.fetch_details
                     and urlsplit(offer.url).netloc in source_hosts
                     and cached is None and detail_budget > 0 and not report.budget_exhausted):
                 detail_budget -= 1
@@ -121,20 +123,26 @@ def run_once(
                     detail_specs = parse_specs(page_text, offer.category)
                     state.store_specs(source.name, offer.product_key, detail_specs, now)
                     offer.specs = offer.specs.merged_with(detail_specs)
-                    result = evaluate(offer, config.rules, history)
+                    results = evaluate_all(offer, config.rules, history)
                 except BudgetExceeded:
                     report.budget_exhausted = True
                 except FetchError as exc:
                     log.warning("[%s] detail page failed: %s", source.name, exc)
 
             state.record_price(source.name, offer.product_key, offer.title, offer.price_eur, now)
-            report.verdicts[result.verdict.value] += 1
-            log.debug("[%s] %s -> %s (%s)", source.name, offer.title, result.verdict.value, "; ".join(result.reasons))
+            report.verdicts[results[0].verdict.value] += 1  # the fixed-limit rule
+            for result in results:
+                log.debug("[%s] %s -> %s %s (%s)", source.name, offer.title, result.rule,
+                          result.verdict.value, "; ".join(result.reasons))
 
-            if result.verdict is Verdict.MATCH:
-                key = alert_key(offer, result)
-                previous = state.alert_record(key)
-                if previous is None or should_realert(previous, offer.price_eur, now):
+            # One alert per deal: the first matching rule (fixed limit before price
+            # drop) reports it, and a deal already alerted under any matching rule
+            # only re-alerts after a further real drop.
+            matches = [(r, alert_key(offer, r)) for r in results if r.verdict is Verdict.MATCH]
+            if matches:
+                previous = [rec for _, key in matches if (rec := state.alert_record(key)) is not None]
+                if all(should_realert(rec, offer.price_eur, now) for rec in previous):
+                    result, key = matches[0]
                     report.alerts.append(Alert(offer, result, key))
 
     problems = [
