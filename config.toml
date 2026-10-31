@@ -32,7 +32,7 @@ max_price_eur = 800
 min_ram_gb = 32
 
 [rules.phone]
-max_price_eur = 300
+max_price_eur = 350
 min_reference_price_eur = 700
 # The reference price comes only from this monitor's own past observations of the
 # same product page. Fewer observations / shorter span => reference "unknown".
@@ -57,7 +57,7 @@ min_normal_price_eur = 500
 [rules.laptop_drop]
 enabled = true
 min_drop_fraction = 0.40
-min_normal_price_eur = 750
+min_normal_price_eur = 699
 min_ram_gb = 16
 
 [rules.monitor_drop]
